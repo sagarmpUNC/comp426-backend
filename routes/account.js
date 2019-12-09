@@ -11,6 +11,8 @@ const saltRounds = 10;
 
 const {accountStore} = require('../data/DataStore');
 
+const axios = require('axios');
+import {secret} from "../secret";
 
 /**
  * This route requires a valid JWT token.
@@ -34,13 +36,19 @@ router.get('/status', authenticateUser, function (req, res) {
  * and returns a JWT.
  */
 router.post('/login', async function (req, res) {
-  if (!req.body.name || !req.body.pass) {
-    res.status(401).send({msg: 'Expected a payload of name and pass.'});
+  if (!req.body.name || !req.body.pass || !req.body.recaptcha) {
+    res.status(401).send({msg: 'Expected a payload of name, pass, and recaptcha.'});
     return;
   }
 
   const name = req.body.name.toLowerCase();
   const pass = req.body.pass;
+
+  const recaptcha = req.body.recaptcha;
+  if(!await checkReCaptcha(recaptcha)) {
+    res.status(402).send({msg: `Failed reCAPTCHA.`});
+    return;
+  }
 
   let user = accountStore.get(`users.${name}`);
   if (!user) {
@@ -66,15 +74,20 @@ router.post('/login', async function (req, res) {
  * if one with that name doesn't exist in the
  * database.
  */
-router.post('/create', function (req, res) {
-  if (!req.body.name || !req.body.pass) {
-    res.status(401).send({msg: 'Expected a payload of name and pass.'});
+router.post('/create', async function (req, res) {
+  if (!req.body.name || !req.body.pass || !req.body.recaptcha) {
+    res.status(401).send({msg: 'Expected a payload of name, pass, and recaptcha.'});
     return;
   }
 
   const name = req.body.name.toLowerCase();
   const pass = req.body.pass;
 
+  const recaptcha = req.body.recaptcha;
+  if(!await checkReCaptcha(recaptcha)) {
+    res.status(402).send({msg: `Failed reCAPTCHA.`});
+    return;
+  }
 
   let user = accountStore.get(`users.${name}`);
   if (user) {
@@ -96,4 +109,10 @@ router.post('/create', function (req, res) {
 async function checkUser(username, password) {
   const user = accountStore.get(`users.${username}`);
   return await bcrypt.compare(password, user.passwordHash);
+}
+
+async function checkReCaptcha(recaptcha) {
+  const result = await axios.post(`https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${recaptcha}`);
+  // return false;
+  return result.data.success;
 }
